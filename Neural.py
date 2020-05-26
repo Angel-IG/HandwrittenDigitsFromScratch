@@ -2,6 +2,7 @@
 
 # Standard library
 import datetime
+import random
 
 # Third party
 import numpy as np
@@ -16,6 +17,24 @@ def time_print(*args, **kwargs):
     """
 
     print(datetime.datetime.now(), *args, **kwargs)
+
+
+def shuffle_equally(arr1, arr2):
+    """
+    Shuffles two np.arrays equally through the first axis.
+    :param arr1: np.array.
+    :param arr2: np.array.
+    :return: None
+    """
+
+    assert len(arr1) == len(arr2), "both arrays must be equally long; however, the first one has a length of " + \
+                                   str(len(arr1)) + " while the second one has a length of " + str(len(arr2)) + ". "
+
+    for i in range(len(arr1) - 1, 0, -1):
+        j = random.randint(0, i + 1)
+        arr1[i], arr1[j] = arr1[j], arr1[i]
+        arr2[i], arr2[j] = arr2[j], arr2[i]
+
 
 class Function:
     """Data structure for using functions with both the normal mode and the derivative. """
@@ -79,27 +98,82 @@ class Network:
 
         self.acc = 0
 
-    def predict(self, x):
+    def predict(self, x, long_output=False):
         """
         :param x: input for the network (numpy.array).
-        :return: output of the network for a given input (x).
+        :param long_output: boolean. If it's true, this would return a list with the outputs of every
+        layer in order from left to right (each element is the result of Layer.feed_forward).
+        :return: if long_output == False, a np.array which is the output of the network for a given input (x);
+        otherwise, it's a list with the outputs of every layer in order from left to right (each element is the
+        result of Layer.feed_forward).
         """
 
         assert x.shape == self.layers[0].input_shape, "invalid input: expected np.array of shape " + \
                                                       str(self.layers[0].input_shape) + " but an array with shape " + \
                                                       str(x.shape) + " was given. "
+        outputs = []
 
         last_output = None
         for layer in self.layers:
             if last_output is not None:
-                last_output = layer.feed_forward(last_output)[0]
+                result = layer.feed_forward(last_output)
+                last_output = result[0]
+                if long_output:
+                    outputs.append(result)
             else:
-                last_output = layer.feed_forward(x)[0]
+                result = layer.feed_forward(x)
+                last_output = result[0]
+                if long_output:
+                    outputs.append(result)
 
-        return last_output
+        return outputs if long_output else last_output
 
+    def train(self, cost_f, training_inputs, training_labels, epochs, minibatches, lr, test_inputs=None,
+              test_labels=None, eval_func=np.argmax):
+        """
+        :param cost_f: cost function (of type Function).
+        :param training_inputs: np.array with np.arrays each one with one input
+        training data (without the expected output).
+        :param training_labels: np.array with np.arrays each one with the expected output
+        to the corresponding input in training_inputs.
+        :param epochs: int, the number of epochs.
+        :param minibatches: int, the number of minibatches of each epoch.
+        :param lr: the learning rate for stochastic gradient descend.
+        :param test_inputs: np.array with np.arrays each one with one input
+        test data (without the expected output). It's not obligatory, but it's highly recommended
+        (it could make the overfitting easier to detect).
+        :param test_labels: np.array with np.arrays each one with the expected output
+        to the corresponding input in test_inputs. It's not obligatory, but it's highly recommended
+        (it could make the overfitting easier to detect).
+        :param eval_func: function (type function, not Function) to use for evaluating the model on test data
+        (the code passes self.predict result to this and checks if it's equal to test_labels[some_index].
+        NOTE: It's not the cost function, it's just for testing the model. Default to np.argmax because my problem is
+        one-hot encoded.
+        :return: None
+        """
 
-# Testing. This should be removed
-sigmoid = Function(lambda x: 1 / (1 + np.e ** -x), lambda x: x)  # Undefined derivative for testing.
-model = Network([8, 4, 2], [sigmoid, sigmoid])
-time_print(model.predict(np.array([1, 5, 46, 4, 2, 1, 5, 7])))
+        time_print("The training process is starting...\n\n")
+
+        for epoch in range(1, epochs + 1):
+            shuffle_equally(training_inputs, training_labels)
+            shuffle_equally(training_inputs, training_labels)
+
+            minibatches_inputs = np.array_split(training_inputs, minibatches)
+            minibatches_labels = np.array_split(training_labels, minibatches)
+
+            # Think of this loop as "for every minibatch..."
+            for example_inputs, example_labels in zip(minibatches_inputs, minibatches_labels):
+                # Do the key stuff
+                pass
+
+            if test_inputs is not None and test_labels is not None:
+                correct = 0
+
+                for test_input, test_label in zip(test_inputs, test_labels):
+                    if eval_func(self.predict(test_input)) == test_label:
+                        correct += 1
+
+                self.acc = correct / len(test_labels)
+                time_print(f"\nEpoch {epoch} completed: test accuracy: {self.acc}. \n")
+            else:
+                time_print(f"\nEpoch {epoch} completed. \n")
