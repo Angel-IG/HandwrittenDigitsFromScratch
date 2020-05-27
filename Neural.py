@@ -1,4 +1,4 @@
-"""My own neural network module for building feed-forward networks trained with stochastic gradient descend."""
+"""My own neural network module for building feed-forward networks trained with gradient descent."""
 
 # Standard library
 import datetime
@@ -128,8 +128,8 @@ class Network:
 
         return outputs if long_output else last_output
 
-    def train(self, cost_f, training_inputs, training_labels, epochs, minibatches, lr, test_inputs=None,
-              test_labels=None, eval_func=np.argmax):
+    def train(self, cost_f, training_inputs, training_labels, epochs, minibatch_size, lr, test_inputs=None,
+              test_labels=None, eval_func=np.argmax, print_loss=True):
         """
         :param cost_f: cost function (of type Function).
         :param training_inputs: np.array with np.arrays each one with one input
@@ -137,8 +137,8 @@ class Network:
         :param training_labels: np.array with np.arrays each one with the expected output
         to the corresponding input in training_inputs.
         :param epochs: int, the number of epochs.
-        :param minibatches: int, the number of minibatches of each epoch.
-        :param lr: the learning rate for stochastic gradient descend.
+        :param minibatch_size: int, the number of training examples of each minibatch.
+        :param lr: the learning rate for mini-batch gradient descent.
         :param test_inputs: np.array with np.arrays each one with one input
         test data (without the expected output). It's not obligatory, but it's highly recommended
         (it could make the overfitting easier to detect).
@@ -149,8 +149,13 @@ class Network:
         (the code passes self.predict result to this and checks if it's equal to test_labels[some_index].
         NOTE: It's not the cost function, it's just for testing the model. Default to np.argmax because my problem is
         one-hot encoded.
+        :param print_loss: boolean, whether the average loss should be printed in each batch or not.
         :return: None
         """
+
+        assert len(training_labels) % minibatch_size, "length of training data must " \
+                                                      "be divisible by the number of minibatches. "
+        minibatches = len(training_labels) / minibatch_size
 
         time_print("The training process is starting...\n\n")
 
@@ -163,8 +168,8 @@ class Network:
 
             # Think of this loop as "for every minibatch..."
             for example_inputs, example_labels in zip(minibatches_inputs, minibatches_labels):
-                # Do the key stuff
-                pass
+                self.gradient_descent_step(example_inputs, example_labels, cost_f, lr=lr,
+                                           epoch_number=epoch, print_loss=print_loss)
 
             if test_inputs is not None and test_labels is not None:
                 correct = 0
@@ -177,3 +182,39 @@ class Network:
                 time_print(f"\nEpoch {epoch} completed: test accuracy: {self.acc}. \n")
             else:
                 time_print(f"\nEpoch {epoch} completed. \n")
+
+    def gradient_descent_step(self, example_inputs, example_labels, cost_f, lr, epoch_number, print_loss=True):
+        """
+        :param example_inputs: training inputs of the minibatch.
+        :param example_labels: training labels of the minibatch.
+        :param cost_f: Function, cost function of the network.
+        :param lr: learning rate.
+        :param epoch_number: current epoch. Used just for prining.
+        :param print_loss: whether the average loss should be printed or not.
+        :return:
+        """
+
+        bias_derivatives = np.zeros((len(self.layers),))
+        weights_derivatives = np.zeros((len(self.layers),))
+
+        for example_input, example_label in zip(example_inputs, example_labels):
+            # Backpropagation
+            output = self.predict(example_input, long_output=True)
+            last_delta = None
+
+            for l, layer in enumerate(self.layers[::-1]):
+                if l == len(self.layers) - 1:
+                    last_delta = cost_f.deriv(output[-1][0], example_label) * layer.activation_func.deriv(output[-1][1])
+                else:
+                    last_delta = layer.W * last_delta * layer.activation_func.deriv(output[len(self.layers) - l][1])
+
+                # The += and len(example_labels) is to automatically calculate the mean.
+                bias_derivatives[l] += last_delta / len(example_labels)
+                weights_derivatives[l] += last_delta * output(len(self.layers) - (l + 1)) / len(example_labels)
+
+        # Gradient descent
+        for l in range(self.layers[::-1]):
+            self.layers[len(self.layers) - l].b += lr * -bias_derivatives
+            self.layers[len(self.layers) - l].W += lr * -weights_derivatives
+
+        # TODO: Print average loss.
