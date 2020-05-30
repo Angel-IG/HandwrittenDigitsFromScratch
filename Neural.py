@@ -30,7 +30,7 @@ def shuffle_equally(arr1, arr2):
     assert len(arr1) == len(arr2), "both arrays must be equally long; however, the first one has a length of " + \
                                    str(len(arr1)) + " while the second one has a length of " + str(len(arr2)) + ". "
 
-    for i in range(len(arr1) - 1, 0, -1):
+    for i in range(len(arr1) - 2, 0, -1):
         j = random.randint(0, i + 1)
         arr1[i], arr1[j] = arr1[j], arr1[i]
         arr2[i], arr2[j] = arr2[j], arr2[i]
@@ -153,29 +153,35 @@ class Network:
         :return: None
         """
 
-        assert len(training_labels) % minibatch_size, "length of training data must " \
-                                                      "be divisible by the number of minibatches. "
+        assert len(training_labels) % minibatch_size == 0, "length of training data must " \
+                                                           "be divisible by the number of minibatches. " \
+                                                           "However, " + str(len(training_labels)) + \
+                                                           " is not divisible by " + str(minibatch_size) + ". "
+
         minibatches = len(training_labels) / minibatch_size
 
         time_print("The training process is starting...\n\n")
 
         for epoch in range(1, epochs + 1):
             shuffle_equally(training_inputs, training_labels)
-            shuffle_equally(training_inputs, training_labels)
+            # We don't have to shuffle the test data as the order is irrelevant.
 
             minibatches_inputs = np.array_split(training_inputs, minibatches)
             minibatches_labels = np.array_split(training_labels, minibatches)
 
+            minibatch = 1
             # Think of this loop as "for every minibatch..."
             for example_inputs, example_labels in zip(minibatches_inputs, minibatches_labels):
                 self.gradient_descent_step(example_inputs, example_labels, cost_f, lr=lr,
-                                           epoch_number=epoch, print_loss=print_loss)
+                                           epoch_number=epoch, minibatch_number=minibatch, print_loss=print_loss)
+
+                minibatch += 1
 
             if test_inputs is not None and test_labels is not None:
                 correct = 0
 
                 for test_input, test_label in zip(test_inputs, test_labels):
-                    if eval_func(self.predict(test_input)) == test_label:
+                    if eval_func(self.predict(test_input)) == eval_func(test_label):
                         correct += 1
 
                 self.acc = correct / len(test_labels)
@@ -183,38 +189,91 @@ class Network:
             else:
                 time_print(f"\nEpoch {epoch} completed. \n")
 
-    def gradient_descent_step(self, example_inputs, example_labels, cost_f, lr, epoch_number, print_loss=True):
+    def gradient_descent_step(self, example_inputs, example_labels, cost_f, lr, epoch_number, minibatch_number,
+                              print_loss=True):
         """
         :param example_inputs: training inputs of the minibatch.
         :param example_labels: training labels of the minibatch.
         :param cost_f: Function, cost function of the network.
         :param lr: learning rate.
         :param epoch_number: current epoch. Used just for prining.
+        :param minibatch_number: current minibatch. Used just for printing.
         :param print_loss: whether the average loss should be printed or not.
-        :return:
+        :return: None
         """
 
-        bias_derivatives = np.zeros((len(self.layers),))
-        weights_derivatives = np.zeros((len(self.layers),))
+        bias_derivatives = list(np.zeros((len(self.layers),)))
+        weights_derivatives = list(np.zeros((len(self.layers),)))
+
+        loss = 0
 
         for example_input, example_label in zip(example_inputs, example_labels):
-            # Backpropagation
+            if print_loss:
+                loss += cost_f.evaluation(self.predict(example_input), example_label) / len(example_labels)
+                # The += and len(...) is for automatically calculate the mean.
+
             output = self.predict(example_input, long_output=True)
             last_delta = None
 
+            # Backpropagation
             for l, layer in enumerate(self.layers[::-1]):
-                if l == len(self.layers) - 1:
+                if l == 0:  # Last layer
                     last_delta = cost_f.deriv(output[-1][0], example_label) * layer.activation_func.deriv(output[-1][1])
                 else:
-                    last_delta = layer.W * last_delta * layer.activation_func.deriv(output[len(self.layers) - l][1])
+                    last_delta = layer.W @ last_delta * \
+                                 layer.activation_func.deriv(output[len(self.layers) - l - 1][1])
 
                 # The += and len(example_labels) is to automatically calculate the mean.
                 bias_derivatives[l] += last_delta / len(example_labels)
-                weights_derivatives[l] += last_delta * output(len(self.layers) - (l + 1)) / len(example_labels)
+                weights_derivatives[l] += last_delta * output[len(self.layers) - (l + 2)][0] / len(example_labels)
 
         # Gradient descent
-        for l in range(self.layers[::-1]):
-            self.layers[len(self.layers) - l].b += lr * -bias_derivatives
-            self.layers[len(self.layers) - l].W += lr * -weights_derivatives
+        for l in range(len(self.layers[::-1])):
+            self.layers[len(self.layers) - l - 1].b -= lr * bias_derivatives[l]
+            self.layers[len(self.layers) - l - 1].W -= lr * weights_derivatives[l]
 
-        # TODO: Print average loss.
+        if print_loss:
+            time_print(f"Epoch {epoch_number}, minibatch {minibatch_number}. Average loss: {loss}. ")
+
+
+# For testing. This should be removed.
+training_inputs = np.array([
+    [0, 0, 0],
+    [0, 0, 1],
+    [0, 1, 0],
+    [0, 1, 1],
+    [1, 0, 0],
+    [1, 1, 1]
+])
+
+training_labels = np.array([
+    [0, 1],
+    [0, 0],
+    [1, 1],
+    [1, 0],
+    [1, 1],
+    [0, 0]
+])
+
+test_inputs = np.array([
+    [1, 1, 0],
+    [1, 0, 1],
+])
+
+test_labels = np.array([
+    [0, 1],
+    [1, 0],
+])
+
+
+def sigmoid_ev(x):
+    return 1 / (1 + np.e ** (-x))
+
+
+sigmoid = Function(sigmoid_ev, lambda x: sigmoid_ev(x) * (1 - sigmoid_ev(x)))
+mse = Function(lambda yp, yr: np.mean((yp - yr) ** 2), lambda yp, yr: (yp - yr))
+
+network = Network([3, 3, 2], [sigmoid, sigmoid])
+network.train(cost_f=mse, epochs=20, minibatch_size=3, lr=0.007, eval_func=(lambda x: x),
+              training_inputs=training_inputs, training_labels=training_labels, test_inputs=test_inputs,
+              test_labels=test_labels)
