@@ -30,8 +30,8 @@ def shuffle_equally(arr1, arr2):
     assert len(arr1) == len(arr2), "both arrays must be equally long; however, the first one has a length of " + \
                                    str(len(arr1)) + " while the second one has a length of " + str(len(arr2)) + ". "
 
-    for i in range(len(arr1) - 2, 0, -1):
-        j = random.randint(0, i + 1)
+    for i in range(len(arr1) - 1, 0, -1):
+        j = random.randint(0, i)
         arr1[i], arr1[j] = arr1[j], arr1[i]
         arr2[i], arr2[j] = arr2[j], arr2[i]
 
@@ -66,8 +66,9 @@ class Layer:
 
     def feed_forward(self, x):
         """
-        :param x: np.array with the input for the layer
-        :return: tuple with two values: the output of the layer (with the activation function) and the weighted sum (without the activation function)
+        :param x: np.array with the input for the layer.
+        :return: tuple with two values: the output of the layer (with the activation function) and the
+        weighted sum (without the activation function).
         """
 
         assert x.shape == self.input_shape, "invalid input: expected np.array of shape " + str(self.input_shape) + \
@@ -113,18 +114,12 @@ class Network:
                                                       str(x.shape) + " was given. "
         outputs = []
 
-        last_output = None
+        last_output = x
         for layer in self.layers:
-            if last_output is not None:
-                result = layer.feed_forward(last_output)
-                last_output = result[0]
-                if long_output:
-                    outputs.append(result)
-            else:
-                result = layer.feed_forward(x)
-                last_output = result[0]
-                if long_output:
-                    outputs.append(result)
+            result = layer.feed_forward(last_output)
+            last_output = result[0]
+            if long_output:
+                outputs.append(result)
 
         return outputs if long_output else last_output
 
@@ -225,7 +220,7 @@ class Network:
 
                 # The += and len(example_labels) is to automatically calculate the mean.
                 bias_derivatives[l] += last_delta / len(example_labels)
-                weights_derivatives[l] += last_delta * output[len(self.layers) - (l + 2)][0] / len(example_labels)
+                weights_derivatives[l] += last_delta * output[len(self.layers) - l - 2][0] / len(example_labels)
 
         # Gradient descent
         for l in range(len(self.layers[::-1])):
@@ -274,6 +269,6 @@ sigmoid = Function(sigmoid_ev, lambda x: sigmoid_ev(x) * (1 - sigmoid_ev(x)))
 mse = Function(lambda yp, yr: np.mean((yp - yr) ** 2), lambda yp, yr: (yp - yr))
 
 network = Network([3, 3, 2], [sigmoid, sigmoid])
-network.train(cost_f=mse, epochs=20, minibatch_size=3, lr=0.007, eval_func=(lambda x: x),
+network.train(cost_f=mse, epochs=20, minibatch_size=3, lr=0.007, eval_func=(lambda x: x.round().all()),
               training_inputs=training_inputs, training_labels=training_labels, test_inputs=test_inputs,
               test_labels=test_labels)
